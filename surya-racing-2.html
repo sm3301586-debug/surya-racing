@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Surya Racing</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#07111f;color:#fff;font-family:system-ui,Arial,sans-serif;overflow:hidden}
+  #game{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+  .hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:3;gap:10px}
+  .pill{background:#06101dcc;border:1px solid #ffffff30;border-radius:14px;padding:9px 13px;box-shadow:0 5px 18px #0005}
+  .brand{font-weight:900;letter-spacing:1px;color:#65e6ff}
+  .score{font-size:18px;font-weight:800}
+  #message{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#03102099,#031020bb);z-index:5;padding:22px}
+  .panel{max-width:430px;width:100%;text-align:center;background:#0b1a2bed;border:1px solid #6be5ff66;border-radius:24px;padding:26px 22px;box-shadow:0 20px 80px #0008}
+  h1{font-size:clamp(30px,8vw,48px);margin:0 0 8px;color:#69e6ff}
+  .sub{color:#d2e4f4;line-height:1.5}
+  button{border:0;border-radius:14px;font-weight:900;font-size:16px;padding:13px 20px;cursor:pointer;touch-action:manipulation}
+  #start{background:#66e7ff;color:#06111e;width:100%;margin-top:12px}
+  .controls{position:fixed;bottom:20px;left:0;right:0;display:flex;justify-content:space-between;padding:0 22px;z-index:4;pointer-events:none}
+  .ctrl{pointer-events:auto;width:76px;height:68px;background:#06101dcc;color:#fff;border:1px solid #ffffff66;font-size:27px;box-shadow:0 6px 20px #0005;user-select:none}
+  .hint{font-size:12px;color:#a9c7da;margin-top:12px}
+  #toast{position:fixed;bottom:104px;left:0;right:0;text-align:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #000;pointer-events:none;z-index:3}
+  @media(min-width:800px){.controls{padding:0 7vw}.ctrl{width:90px;height:74px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div class="hud">
+  <div class="pill"><div class="brand">🏁 SURYA RACING</div><div class="hint" style="margin:3px 0 0">3D ARCADE</div></div>
+  <div class="pill">SCORE <div class="score" id="score">0</div></div>
+</div>
+<div id="toast">Traffic se bacho!</div>
+<div class="controls">
+  <button class="ctrl" id="left" aria-label="Left">◀</button>
+  <button class="ctrl" id="right" aria-label="Right">▶</button>
+</div>
+<div id="message">
+  <div class="panel">
+    <h1>🏎️ Surya Racing</h1>
+    <p class="sub">Road par car chalao, traffic se bacho aur high score banao!</p>
+    <p class="sub"><b>Mobile:</b> ◀ ▶ buttons<br><b>Computer:</b> ← → Arrow Keys</p>
+    <button id="start">START RACE</button>
+    <div class="hint">Yeh beginner 3D game hai. Internet connection zaroori hai.</div>
+  </div>
+</div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const mount = document.getElementById('game');
+const scoreEl = document.getElementById('score');
+const message = document.getElementById('message');
+const startBtn = document.getElementById('start');
+const toast = document.getElementById('toast');
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8ed7ff);
+scene.fog = new THREE.Fog(0x8ed7ff, 35, 150);
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 250);
+camera.position.set(0, 6.5, 12);
+camera.lookAt(0, 0.5, -10);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+mount.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xeaf8ff, 0x36512c, 2.0));
+const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+sun.position.set(-5, 12, 8);
+sun.castShadow = true;
+scene.add(sun);
+
+const mat = (color, roughness=0.8, metalness=0) => new THREE.MeshStandardMaterial({color, roughness, metalness});
+const grassMat = mat(0x3f9a45);
+const roadMat = mat(0x303640);
+const lineMat = mat(0xffffff);
+const darkMat = mat(0x10151d);
+const glassMat = new THREE.MeshStandardMaterial({color:0x9ceaff, roughness:0.25, metalness:0.1});
+const tireMat = mat(0x111318);
+const road = new THREE.Mesh(new THREE.PlaneGeometry(13, 220), roadMat);
+road.rotation.x = -Math.PI/2; road.position.set(0, -0.08, -75); road.receiveShadow=true; scene.add(road);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(250, 250), grassMat);
+ground.rotation.x=-Math.PI/2; ground.position.set(0,-0.13,-75); ground.receiveShadow=true; scene.add(ground);
+
+// Road edges and dashed lane markers
+for (const x of [-6.15, 6.15]) {
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.04,220), lineMat);
+  edge.position.set(x,0,-75); scene.add(edge);
+}
+const dashes=[];
+for(let z=-175;z<20;z+=8){
+  for(const x of [-2.05,2.05]){
+    const dash=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.035,3.5),lineMat);
+    dash.position.set(x,0,z); scene.add(dash); dashes.push(dash);
+  }
+}
+
+// Simple low-poly car built from shapes (no external model required)
+function makeCar(color, isPlayer=false){
+  const car = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.45,0.48,2.7), mat(color,0.35,0.25));
+  body.position.y=0.55; body.castShadow=true; car.add(body);
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.3,0.16,0.82), mat(color,0.32,0.2));
+  hood.position.set(0,0.81,-0.78); car.add(hood);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.05,0.53,1.12), glassMat);
+  cabin.position.set(0,0.98,0.22); cabin.castShadow=true; car.add(cabin);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(0.92,0.12,0.85), mat(isPlayer?0x073a55:color,0.35,0.1));
+  roof.position.set(0,1.27,0.24); car.add(roof);
+  for(const x of [-0.77,0.77]){
+    for(const z of [-0.83,0.87]){
+      const tire=new THREE.Mesh(new THREE.BoxGeometry(0.27,0.48,0.55),tireMat);
+      tire.position.set(x,0.38,z); tire.castShadow=true; car.add(tire);
+    }
+  }
+  const front = new THREE.Mesh(new THREE.BoxGeometry(0.34,0.13,0.06), mat(0xfff2ad,0.3));
+  front.position.set(-0.43,0.59,-1.37); car.add(front);
+  const front2=front.clone(); front2.position.x=0.43; car.add(front2);
+  const tailMat=mat(0xff3434,0.3);
+  for(const x of [-0.46,0.46]){
+    const tail=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.13,0.06),tailMat);
+    tail.position.set(x,0.58,1.37); car.add(tail);
+  }
+  return car;
+}
+
+const player=makeCar(0x087fff,true);
+player.position.set(0,0,4);
+scene.add(player);
+
+const lanes=[-4.1,0,4.1];
+let traffic=[];
+function spawnTraffic(z=-100){
+  const lane=lanes[Math.floor(Math.random()*lanes.length)];
+  const colors=[0xff7b22,0xf4d03f,0xd946ef,0xeeeeee,0x21c6a8,0xef4444];
+  const car=makeCar(colors[Math.floor(Math.random()*colors.length)]);
+  car.position.set(lane,0,z);
+  car.rotation.y=Math.PI;
+  scene.add(car);
+  traffic.push(car);
+}
+for(let i=0;i<5;i++) spawnTraffic(-35-i*29);
+
+let running=false, score=0, speed=0.42, last=0, spawnTimer=0;
+let targetX=0;
+function move(dir){ if(!running)return; targetX=THREE.MathUtils.clamp(targetX+dir*4.1,-4.1,4.1); }
+document.getElementById('left').addEventListener('pointerdown',e=>{e.preventDefault();move(-1)});
+document.getElementById('right').addEventListener('pointerdown',e=>{e.preventDefault();move(1)});
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){e.preventDefault();move(-1)}
+  if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){e.preventDefault();move(1)}
+  if((e.key===' '||e.key==='Enter')&&!running&&message.style.display!=='none') startGame();
+});
+function startGame(){
+  score=0; speed=0.42; targetX=0; player.position.x=0;
+  traffic.forEach(c=>scene.remove(c)); traffic=[];
+  for(let i=0;i<5;i++) spawnTraffic(-35-i*29);
+  scoreEl.textContent='0'; running=true; message.style.display='none';
+  toast.textContent='Traffic se bacho!';
+  last=performance.now();
+}
+function endGame(){
+  running=false;
+  message.style.display='flex';
+  message.querySelector('h1').textContent='🏁 Race Over!';
+  message.querySelector('.sub').innerHTML=`Tumhara score: <b>${Math.floor(score)}</b><br>Dobara try karo aur apna record todo!`;
+  startBtn.textContent='PLAY AGAIN';
+}
+startBtn.addEventListener('click',startGame);
+
+function animate(t){
+  requestAnimationFrame(animate);
+  const dt=Math.min((t-last)/16.67||1,2.2); last=t;
+  if(running){
+    score += dt*speed*2.4;
+    scoreEl.textContent=Math.floor(score);
+    speed=Math.min(0.78,0.42+score/1800);
+    player.position.x=THREE.MathUtils.lerp(player.position.x,targetX,0.16*dt);
+    player.rotation.z=(targetX-player.position.x)*-0.035;
+    for(const dash of dashes){dash.position.z+=speed*dt*2.8;if(dash.position.z>12)dash.position.z=-180;}
+    for(const car of traffic){
+      car.position.z+=speed*dt*2.1;
+      if(car.position.z>13){car.position.z=-100-Math.random()*45;car.position.x=lanes[Math.floor(Math.random()*lanes.length)];}
+      const dx=Math.abs(car.position.x-player.position.x);
+      const dz=Math.abs(car.position.z-player.position.z);
+      if(dx<1.45&&dz<2.05){endGame();break;}
+    }
+    spawnTimer+=dt;
+  } else {
+    player.rotation.z=Math.sin(t*0.0015)*0.015;
+  }
+  camera.position.x=THREE.MathUtils.lerp(camera.position.x,player.position.x*0.22,0.04);
+  camera.lookAt(player.position.x*0.12,0.55,-10);
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
